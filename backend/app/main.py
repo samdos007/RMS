@@ -1,9 +1,12 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.api.router import api_router
 from app.config import settings
@@ -32,7 +35,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,6 +43,26 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router)
+
+# Serve frontend static files (for production)
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve frontend for all non-API routes."""
+        # Don't serve frontend for API, docs, or health routes
+        if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "health")):
+            return {"error": "Not found"}
+
+        # Serve index.html for SPA routes
+        file_path = static_dir / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        else:
+            # For SPA routing, return index.html
+            return FileResponse(static_dir / "index.html")
 
 
 @app.get("/health")
